@@ -4,10 +4,11 @@ from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI
-from fastapi import Header
 from fastapi import Request
+from fastapi import Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import Settings
 from app.errors import AppError
@@ -15,6 +16,9 @@ from app.groq import GroqClient
 from app.schemas import AiRequest, AiResponse
 from app.service import GenerateService
 from app.supabase import SupabaseGateway
+
+
+bearer = HTTPBearer(auto_error=False)
 
 
 def create_app(
@@ -89,11 +93,13 @@ def create_app(
     async def generate(
         payload: AiRequest,
         request: Request,
-        authorization: Annotated[str | None, Header()] = None,
+        credentials: Annotated[
+            HTTPAuthorizationCredentials | None, Security(bearer)
+        ] = None,
     ):
         return await request.app.state.generation_service.generate(
             payload,
-            authorization,
+            credentials.credentials if credentials is not None else None,
             request.state.request_id,
         )
 

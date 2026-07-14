@@ -44,11 +44,10 @@ def _hash(value: str | UUID | None) -> str:
     return hashlib.sha256(str(value).encode()).hexdigest()[:12]
 
 
-def _bearer_token(authorization: str | None) -> str:
-    scheme, _, token = (authorization or "").partition(" ")
-    if scheme.lower() != "bearer" or not token.strip():
+def _bearer_token(credentials: str | None) -> str:
+    if not credentials or any(character.isspace() for character in credentials):
         raise AppError(401, "authentication_required", "Authentication required.")
-    return token.strip()
+    return credentials
 
 
 class GenerateService:
@@ -60,7 +59,7 @@ class GenerateService:
     async def generate(
         self,
         payload: AiRequest,
-        authorization: str | None,
+        credentials: str | None,
         request_id: str,
     ):
         started = time.perf_counter()
@@ -68,7 +67,7 @@ class GenerateService:
         user_id = None
         metadata = {"retries": "-", "prompt_tokens": "-", "completion_tokens": "-"}
         try:
-            token = _bearer_token(authorization)
+            token = _bearer_token(credentials)
             session = await self.gateway.validate_session(token)
             user_id = session.user_id
             board = await self.gateway.read_board(session, payload.org_id)

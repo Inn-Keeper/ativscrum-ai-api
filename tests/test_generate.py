@@ -180,10 +180,19 @@ def service(events, *, gateway_failure=None, groq_failure=False, board_data=None
     )
 
 
-async def post(generation_service, body, *, token="caller-token"):
+async def post(
+    generation_service,
+    body,
+    *,
+    token="caller-token",
+    authorization: str | None = None,
+):
     app = create_app(Settings(), generation_service=generation_service)
     transport = httpx.ASGITransport(app=app)
-    headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
+    if authorization is not None:
+        headers = {"Authorization": authorization}
+    else:
+        headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         return await client.post("/api/v1/ai/generate", json=body, headers=headers)
 
@@ -253,6 +262,27 @@ async def test_failures_before_context_validation_never_consume_quota(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "authorization",
+    ["Bearer token extra", "Bearer token\tpart", "Basic token"],
+)
+async def test_malformed_bearer_credentials_are_rejected_before_session_validation(
+    authorization,
+):
+    events = []
+
+    response = await post(
+        service(events),
+        REQUESTS["story_assistant"],
+        authorization=authorization,
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "authentication_required"
+    assert events == []
+
+
+@pytest.mark.asyncio
 async def test_oversized_context_never_consumes_quota():
     events = []
     configured = Settings(ai_context_max_chars=50)
@@ -294,30 +324,84 @@ async def test_all_generation_kinds_return_the_typed_contract(kind):
     assert payload["suggestion"] == SUGGESTIONS[kind].model_dump(mode="json")
 
 
-@pytest.mark.asyncio
-async def test_openapi_exposes_only_discriminated_request_and_response_unions():
+def test_openapi_exposes_only_discriminated_request_union_and_bearer_security():
     app = create_app(Settings(), generation_service=service([]))
     schema = app.openapi()
     operation = schema["paths"]["/api/v1/ai/generate"]["post"]
-    serialized = str(operation).lower()
 
-    assert "sprintsummaryrequest" in serialized
-    assert "storyassistantrequest" in serialized
-    assert "standupdraftrequest" in serialized
-    assert "scrumcoachrequest" in serialized
-    assert "sprintsummaryresponse" in serialized
-    assert "storyassistantresponse" in serialized
-    assert "standupdraftresponse" in serialized
-    assert "scrumcoachresponse" in serialized
-    assert "prompt" not in serialized
+    request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    expected_variants = {
+        "SprintSummaryRequest",
+        "StoryAssistantRequest",
+        "StandupDraftRequest",
+        "ScrumCoachRequest",
+    }
+    assert request_schema["discriminator"]["propertyName"] == "kind"
+    assert {
+        reference["$ref"].rsplit("/", 1)[-1] for reference in request_schema["oneOf"]
+    } == expected_variants
+    assert {
+        reference.rsplit("/", 1)[-1]
+        for reference in request_schema["discriminator"]["mapping"].values()
+    } == expected_variants
+
+    def referenced_schemas(node):
+        if isinstance(node, dict):
+            reference = node.get("$ref")
+            if reference:
+                component = schema["components"]["schemas"][
+                    reference.rsplit("/", 1)[-1]
+                ]
+                yield component
+                yield from referenced_schemas(component)
+            for key, value in node.items():
+                if key != "$ref":
+                    yield from referenced_schemas(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from referenced_schemas(value)
+
+    resolved_request_schemas = [request_schema, *referenced_schemas(request_schema)]
+    assert "prompt" not in {
+        property_name
+        for component in resolved_request_schemas
+        for property_name in component.get("properties", {})
+    }
+    assert operation["security"] == [{"HTTPBearer": []}]
+    assert schema["components"]["securitySchemes"]["HTTPBearer"] == {
+        "type": "http",
+        "scheme": "bearer",
+    }
 
 
 @pytest.mark.asyncio
 async def test_coach_rejects_evidence_absent_from_minimized_context():
     events = []
     bad_groq = FakeGroq(events)
+    board_data = board()
+    board_data["items"].append(
+        {
+            "id": "story-outside-sprint",
+            "title": "Outside story",
+            "type": "feature",
+            "priority": "medium",
+            "estimateDays": 1,
+            "sprintId": "different-sprint",
+        }
+    )
+    board_data["tasks"].append(
+        {
+            "id": "task-outside-sprint",
+            "backlogItemId": "story-outside-sprint",
+            "title": "Outside task",
+            "assigneeId": None,
+            "status": "todo",
+            "completedAt": None,
+        }
+    )
 
     async def generate(*args, **kwargs):
+        events.append("groq")
         return GroqResult(
             value=CoachSuggestion(
                 observations=[
@@ -325,7 +409,7 @@ async def test_coach_rejects_evidence_absent_from_minimized_context():
                         "severity": "warning",
                         "claim": "Unsupported claim.",
                         "suggestion": "Unsupported action.",
-                        "evidence": [{"kind": "task", "id": "task-not-in-context"}],
+                        "evidence": [{"kind": "task", "id": "task-outside-sprint"}],
                     }
                 ]
             ),
@@ -335,10 +419,12 @@ async def test_coach_rejects_evidence_absent_from_minimized_context():
         )
 
     bad_groq.generate = generate
-    generation_service = GenerateService(Settings(), FakeGateway(events), bad_groq)
+    generation_service = GenerateService(
+        Settings(), FakeGateway(events, board_data=board_data), bad_groq
+    )
 
     response = await post(generation_service, REQUESTS["scrum_coach"])
 
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "invalid_model_response"
-    assert events == ["validate_session", "read_board", "consume_quota"]
+    assert events == ["validate_session", "read_board", "consume_quota", "groq"]
