@@ -363,3 +363,145 @@ def test_irreducible_unsaved_draft_is_rejected(board):
         build_context(board, request, max_chars=100)
 
     assert (caught.value.status_code, caught.value.code) == (422, "context_too_large")
+
+
+def test_large_required_collections_are_not_silently_pre_capped(board):
+    board["items"] = []
+    board["tasks"] = []
+    board["reviewCards"] = []
+    board["retroCards"] = []
+    for index in range(105):
+        story_id = f"story-{index:03d}"
+        board["items"].append(
+            {
+                "id": story_id,
+                "title": f"Story {index}",
+                "type": "feature",
+                "priority": "medium",
+                "estimateDays": 1,
+                "sprintId": "s-current",
+            }
+        )
+        board["tasks"].append(
+            {
+                "id": f"task-{index:03d}",
+                "backlogItemId": story_id,
+                "title": f"Task {index}",
+                "assigneeId": None,
+                "status": "todo",
+                "completedAt": None,
+                **({"blocked": "Current blocker"} if index == 104 else {}),
+            }
+        )
+        board["reviewCards"].append(
+            {
+                "id": f"review-{index:03d}",
+                "sprintId": "s-current",
+                "text": f"Review {index}",
+                "votes": index,
+            }
+        )
+        board["retroCards"].append(
+            {
+                "id": f"retro-{index:03d}",
+                "sprintId": "s-current",
+                "column": "continue",
+                "text": f"Retro {index}",
+                "votes": index,
+            }
+        )
+
+    context = build_context(
+        board,
+        SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"),
+        max_chars=1_000_000,
+    )
+
+    assert len(context["stories"]) == 105
+    assert len(context["tasks"]) == 105
+    assert len(context["reviewCards"]) == 105
+    assert len(context["retroCards"]) == 105
+    assert context["stories"][-1]["title"] == "Story 104"
+    assert context["tasks"][-1]["blocked"] == "Current blocker"
+
+    board_without_cards = deepcopy(board)
+    board_without_cards["reviewCards"] = []
+    board_without_cards["retroCards"] = []
+    protected = build_context(
+        board_without_cards,
+        SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"),
+        max_chars=1_000_000,
+    )
+    trimmed = build_context(
+        board,
+        SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"),
+        max_chars=len(serialized(protected)),
+    )
+    assert len(trimmed["stories"]) == 105
+    assert len(trimmed["tasks"]) == 105
+    assert trimmed["reviewCards"] == []
+    assert trimmed["retroCards"] == []
+    assert trimmed["tasks"][-1]["blocked"] == "Current blocker"
+
+
+def test_requested_story_text_is_lossless_and_fails_closed_when_too_large(board):
+    long_title = "T" * 300
+    long_description = "D" * 4_000
+    long_acceptance = "A" * 500
+    board["items"][2]["title"] = long_title
+    board["items"][2]["description"] = long_description
+    board["items"][2]["acceptance"] = [
+        {"id": "ac-lossless", "text": long_acceptance, "done": False}
+    ]
+    request = StoryAssistantRequest(kind="story_assistant", org_id=ORG_ID, item_id="story-a")
+
+    context = build_context(board, request, max_chars=20_000)
+
+    assert context["story"]["title"] == long_title
+    assert context["story"]["description"] == long_description
+    assert context["story"]["acceptance"][0]["text"] == long_acceptance
+    with pytest.raises(AppError) as caught:
+        build_context(board, request, max_chars=500)
+    assert caught.value.code == "context_too_large"
+
+
+def test_member_standup_keeps_only_stories_referenced_by_filtered_tasks(board):
+    context = build_context(
+        board,
+        StandupDraftRequest(
+            kind="standup_draft", org_id=ORG_ID, sprint_id="s-current", member_id="person-b"
+        ),
+        max_chars=10_000,
+    )
+
+    assert [story["id"] for story in context["stories"]] == ["story-b"]
+
+
+def test_coach_rejects_boolean_wip_limits(board):
+    board["wipLimits"] = {"todo": True, "inprogress": 3, "test": False}
+
+    context = build_context(
+        board,
+        ScrumCoachRequest(kind="scrum_coach", org_id=ORG_ID, sprint_id="s-current"),
+        max_chars=10_000,
+    )
+
+    assert context["wipLimits"] == {"inprogress": 3}
+
+
+def test_blockers_and_metric_evidence_ids_are_lossless(board):
+    long_blocker = "blocked-" + "x" * 600
+    long_metric_id = "metric-" + "y" * 150
+    board["tasks"][0]["blocked"] = long_blocker
+    board["metrics"] = {long_metric_id: 7}
+
+    context = build_context(
+        board,
+        ScrumCoachRequest(kind="scrum_coach", org_id=ORG_ID, sprint_id="s-current"),
+        max_chars=20_000,
+    )
+
+    assert next(task for task in context["tasks"] if task["id"] == "task-b")[
+        "blocked"
+    ] == long_blocker
+    assert context["metrics"] == {long_metric_id: 7}
