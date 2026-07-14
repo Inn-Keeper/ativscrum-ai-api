@@ -1,5 +1,10 @@
-from pydantic import computed_field
+from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+STRICT_GROQ_MODELS = frozenset(
+    {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}
+)
 
 
 class Settings(BaseSettings):
@@ -16,6 +21,14 @@ class Settings(BaseSettings):
     ai_max_output_tokens: int = 1_200
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("ai_model_fast", "ai_model_quality")
+    @classmethod
+    def require_strict_groq_model(cls, value: str) -> str:
+        if value not in STRICT_GROQ_MODELS:
+            supported = ", ".join(sorted(STRICT_GROQ_MODELS))
+            raise ValueError(f"model must support Groq strict outputs: {supported}")
+        return value
 
     @computed_field
     @property

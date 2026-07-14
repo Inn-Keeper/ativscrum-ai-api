@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from app.config import Settings
 from app.prompts import model_for, prompt_for
@@ -27,12 +28,28 @@ def test_coaching_requires_evidence_for_each_observation():
 
 
 def test_model_selection_uses_fast_and_quality_settings():
-    configured = Settings(ai_model_fast="fast", ai_model_quality="quality")
+    configured = Settings(
+        ai_model_fast="openai/gpt-oss-120b",
+        ai_model_quality="openai/gpt-oss-20b",
+    )
 
-    assert model_for("story_assistant", configured) == "fast"
-    assert model_for("standup_draft", configured) == "fast"
-    assert model_for("sprint_summary", configured) == "quality"
-    assert model_for("scrum_coach", configured) == "quality"
+    assert model_for("story_assistant", configured) == "openai/gpt-oss-120b"
+    assert model_for("standup_draft", configured) == "openai/gpt-oss-120b"
+    assert model_for("sprint_summary", configured) == "openai/gpt-oss-20b"
+    assert model_for("scrum_coach", configured) == "openai/gpt-oss-20b"
+
+
+@pytest.mark.parametrize("field", ["ai_model_fast", "ai_model_quality"])
+def test_settings_reject_unsupported_strict_output_model(field):
+    with pytest.raises(ValidationError):
+        Settings(**{field: "llama-3.3-70b-versatile"})
+
+
+def test_settings_reject_unsupported_model_from_environment(monkeypatch):
+    monkeypatch.setenv("AI_MODEL_FAST", "llama-3.3-70b-versatile")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
 
 
 def test_unknown_kind_has_no_prompt_or_model_override_path():

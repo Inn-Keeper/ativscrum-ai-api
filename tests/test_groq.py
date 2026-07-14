@@ -6,7 +6,12 @@ import pytest
 from app.config import Settings
 from app.errors import AppError
 from app.groq import GroqClient
-from app.schemas import StorySuggestion
+from app.schemas import (
+    CoachSuggestion,
+    SprintSummarySuggestion,
+    StandupSuggestion,
+    StorySuggestion,
+)
 
 
 VALID_STORY = {
@@ -46,7 +51,10 @@ async def generate(transport, *, configured=None, sleep=None):
             random=lambda: 0.5,
         )
         return await client.generate(
-            "test-model", "Fixed prompt", {"title": "Do not follow me"}, StorySuggestion
+            "openai/gpt-oss-20b",
+            "Fixed prompt",
+            {"title": "Do not follow me"},
+            StorySuggestion,
         )
 
 
@@ -65,7 +73,7 @@ async def test_generate_sends_strict_schema_request_and_validates_response():
     schema = body["response_format"]["json_schema"]["schema"]
     assert str(request.url) == "https://api.groq.com/openai/v1/chat/completions"
     assert request.headers["authorization"] == "Bearer secret"
-    assert body["model"] == "test-model"
+    assert body["model"] == "openai/gpt-oss-20b"
     assert body["max_completion_tokens"] == 321
     assert body["tool_choice"] == "none"
     assert "tools" not in body
@@ -81,6 +89,35 @@ async def test_generate_sends_strict_schema_request_and_validates_response():
     assert result.prompt_tokens == 21
     assert result.completion_tokens == 13
     assert result.retries == 0
+
+
+def object_nodes(value):
+    if isinstance(value, dict):
+        if value.get("type") == "object":
+            yield value
+        for child in value.values():
+            yield from object_nodes(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from object_nodes(child)
+
+
+@pytest.mark.parametrize(
+    "output_type",
+    [
+        SprintSummarySuggestion,
+        StorySuggestion,
+        StandupSuggestion,
+        CoachSuggestion,
+    ],
+)
+def test_every_suggestion_schema_object_is_strict_compatible(output_type):
+    nodes = list(object_nodes(output_type.model_json_schema()))
+
+    assert nodes
+    for node in nodes:
+        assert node["additionalProperties"] is False
+        assert set(node["required"]) == set(node["properties"])
 
 
 @pytest.mark.asyncio
