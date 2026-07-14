@@ -12,13 +12,6 @@ from app.schemas import (
 )
 
 
-_MAX_DOD = 30
-
-
-def _text(value: Any, limit: int) -> str:
-    return value[:limit] if isinstance(value, str) else ""
-
-
 def _string(value: Any) -> str:
     return value if isinstance(value, str) else ""
 
@@ -44,8 +37,8 @@ def _too_large() -> AppError:
 def _project(board: dict) -> dict:
     source = board.get("project") or {}
     return {
-        "name": _text(source.get("name"), 240),
-        "dod": [_text(item, 500) for item in source.get("dod", [])[:_MAX_DOD]],
+        "name": _string(source.get("name")),
+        "dod": [_string(item) for item in source.get("dod", [])],
     }
 
 
@@ -57,11 +50,11 @@ def _sprint(board: dict, sprint_id: str) -> dict:
         raise _not_found()
     return {
         "id": _string(source.get("id")),
-        "name": _text(source.get("name"), 240),
-        "goal": _text(source.get("goal"), 500),
-        "startDate": _text(source.get("startDate"), 20),
-        "endDate": _text(source.get("endDate"), 20),
-        "state": _text(source.get("state"), 20),
+        "name": _string(source.get("name")),
+        "goal": _string(source.get("goal")),
+        "startDate": _string(source.get("startDate")),
+        "endDate": _string(source.get("endDate")),
+        "state": _string(source.get("state")),
     }
 
 
@@ -81,8 +74,8 @@ def _story(source: dict, *, detail: bool) -> dict:
     result = {
         "id": _string(source.get("id")),
         "title": _string(source.get("title")),
-        "type": _text(source.get("type"), 20),
-        "priority": _text(source.get("priority"), 20),
+        "type": _string(source.get("type")),
+        "priority": _string(source.get("priority")),
         "estimateDays": _number(source.get("estimateDays")),
     }
     if detail:
@@ -103,13 +96,15 @@ def _task(source: dict) -> dict:
     result = {
         "id": _string(source.get("id")),
         "storyId": _string(source.get("backlogItemId")),
-        "title": _text(source.get("title"), 240),
+        "title": _string(source.get("title")),
         "assigneeId": (
-            _text(source.get("assigneeId"), 120) if source.get("assigneeId") is not None else None
+            _string(source.get("assigneeId")) if source.get("assigneeId") is not None else None
         ),
-        "status": _text(source.get("status"), 20),
+        "status": _string(source.get("status")),
         "completedAt": (
-            _text(source.get("completedAt"), 40) if source.get("completedAt") is not None else None
+            _string(source.get("completedAt"))
+            if source.get("completedAt") is not None
+            else None
         ),
     }
     if source.get("blocked"):
@@ -139,11 +134,11 @@ def _cards(board: dict, field: str, sprint_id: str, *, retro: bool) -> list[dict
     for source in sources:
         card = {
             "id": _string(source.get("id")),
-            "text": _text(source.get("text"), 500),
+            "text": _string(source.get("text")),
             "votes": _number(source.get("votes"), 0),
         }
         if retro:
-            card["column"] = _text(source.get("column"), 20)
+            card["column"] = _string(source.get("column"))
         result.append(card)
     return result
 
@@ -161,9 +156,9 @@ def _transitions(board: dict, task_ids: set[str]) -> list[dict]:
     return [
         {
             "taskId": _string(item.get("taskId")),
-            "from": _text(item.get("from"), 20),
-            "to": _text(item.get("to"), 20),
-            "at": _text(item.get("at"), 40),
+            "from": _string(item.get("from")),
+            "to": _string(item.get("to")),
+            "at": _string(item.get("at")),
         }
         for item in sources
     ]
@@ -231,7 +226,7 @@ def _standup_context(board: dict, request: StandupDraftRequest) -> dict:
     tasks = _tasks(board, {story["id"] for story in stories}, request.member_id)
     person_ids = {task["assigneeId"] for task in tasks if task["assigneeId"]}
     people = [
-        {"id": _string(person.get("id")), "name": _text(person.get("name"), 240)}
+        {"id": _string(person.get("id")), "name": _string(person.get("name"))}
         for person in sorted(board.get("people", []), key=lambda item: str(item.get("id", "")))
         if person.get("id") in person_ids
     ]

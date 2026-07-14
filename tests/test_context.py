@@ -505,3 +505,97 @@ def test_blockers_and_metric_evidence_ids_are_lossless(board):
         "blocked"
     ] == long_blocker
     assert context["metrics"] == {long_metric_id: 7}
+
+
+def test_all_allowlisted_summary_values_are_lossless(board):
+    project_name = "project-" + "p" * 300
+    dod_entry = "dod-" + "d" * 600
+    sprint_name = "sprint-" + "s" * 300
+    sprint_goal = "goal-" + "g" * 600
+    story_title = "story-" + "y" * 300
+    task_title = "task-" + "t" * 300
+    card_text = "card-" + "c" * 600
+    board["project"]["name"] = project_name
+    board["project"]["dod"] = [f"criterion-{index}" for index in range(35)] + [dod_entry]
+    board["sprints"][1]["name"] = sprint_name
+    board["sprints"][1]["goal"] = sprint_goal
+    board["items"][2]["title"] = story_title
+    board["tasks"][1]["title"] = task_title
+    board["reviewCards"][0]["text"] = card_text
+
+    context = build_context(
+        board,
+        SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"),
+        max_chars=50_000,
+    )
+
+    assert context["project"]["name"] == project_name
+    assert len(context["project"]["dod"]) == 36
+    assert context["project"]["dod"][-1] == dod_entry
+    assert context["sprint"]["name"] == sprint_name
+    assert context["sprint"]["goal"] == sprint_goal
+    assert next(story for story in context["stories"] if story["id"] == "story-a")[
+        "title"
+    ] == story_title
+    assert next(task for task in context["tasks"] if task["id"] == "task-a")[
+        "title"
+    ] == task_title
+    assert next(card for card in context["reviewCards"] if card["id"] == "review-low")[
+        "text"
+    ] == card_text
+
+
+def test_all_allowlisted_standup_values_are_lossless(board):
+    person_name = "person-" + "n" * 300
+    assignee_id = "person-" + "i" * 150
+    transition_state = "state-" + "z" * 30
+    transition_at = "date-" + "a" * 50
+    board["people"][0]["id"] = assignee_id
+    board["people"][0]["name"] = person_name
+    board["tasks"][1]["assigneeId"] = assignee_id
+    board["transitions"][1]["from"] = transition_state
+    board["transitions"][1]["at"] = transition_at
+
+    context = build_context(
+        board,
+        StandupDraftRequest(kind="standup_draft", org_id=ORG_ID, sprint_id="s-current"),
+        max_chars=50_000,
+    )
+
+    task = next(task for task in context["tasks"] if task["id"] == "task-a")
+    transition = next(
+        item for item in context["transitions"] if item["from"] == transition_state
+    )
+    assert task["assigneeId"] == assignee_id
+    assert {"id": assignee_id, "name": person_name} in context["people"]
+    assert transition["from"] == transition_state
+    assert transition["at"] == transition_at
+
+
+def test_oversized_allowlisted_project_name_fails_instead_of_truncating():
+    board = {
+        "project": {"name": "p" * 1_000, "dod": []},
+        "sprints": [
+            {
+                "id": "s",
+                "name": "S",
+                "goal": "G",
+                "startDate": "2026-01-01",
+                "endDate": "2026-01-02",
+                "state": "active",
+            }
+        ],
+        "items": [],
+        "tasks": [],
+        "reviewCards": [],
+        "retroCards": [],
+    }
+
+    with pytest.raises(AppError) as caught:
+        build_context(
+            board,
+            SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s"),
+            max_chars=600,
+        )
+
+    assert caught.value.code == "context_too_large"
