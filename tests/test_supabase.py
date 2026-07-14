@@ -50,6 +50,19 @@ async def test_validate_session_forwards_only_anon_key_and_caller_token(settings
 
 
 @pytest.mark.asyncio
+async def test_gateway_uses_the_supplied_shared_http_client(settings):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"id": "user-123"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        gateway = SupabaseGateway(settings, http_client=client)
+        session = await gateway.validate_session("caller-token")
+
+        assert session.user_id == "user-123"
+        assert client.is_closed is False
+
+
+@pytest.mark.asyncio
 async def test_validate_session_maps_401_to_authentication_required(settings):
     gateway = SupabaseGateway(
         settings,
@@ -80,9 +93,7 @@ async def test_read_board_is_caller_scoped_and_returns_board_data(settings):
 
     gateway = SupabaseGateway(settings, transport=httpx.MockTransport(handler))
 
-    assert await gateway.read_board(session, org_id) == {
-        "project": {"name": "Mine"}
-    }
+    assert await gateway.read_board(session, org_id) == {"project": {"name": "Mine"}}
 
 
 @pytest.mark.asyncio

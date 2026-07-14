@@ -19,10 +19,12 @@ class SupabaseGateway:
         self,
         settings: Settings,
         *,
+        http_client: httpx.AsyncClient | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = settings.supabase_url.rstrip("/")
         self._anon_key = settings.supabase_anon_key
+        self._http_client = http_client
         self._transport = transport
 
     async def validate_session(self, token: str) -> Session:
@@ -64,11 +66,17 @@ class SupabaseGateway:
         self._raise_upstream_error(response)
         return response.json()
 
-    async def _request(self, method: str, path: str, token: str, **kwargs) -> httpx.Response:
+    async def _request(
+        self, method: str, path: str, token: str, **kwargs
+    ) -> httpx.Response:
         headers = {
             "apikey": self._anon_key,
             "Authorization": f"Bearer {token}",
         }
+        if self._http_client is not None:
+            return await self._http_client.request(
+                method, f"{self._base_url}{path}", headers=headers, **kwargs
+            )
         async with httpx.AsyncClient(transport=self._transport, timeout=10) as client:
             return await client.request(
                 method, f"{self._base_url}{path}", headers=headers, **kwargs

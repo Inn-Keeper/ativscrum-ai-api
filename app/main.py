@@ -1,17 +1,45 @@
+from contextlib import asynccontextmanager
+from typing import Annotated
 from uuid import uuid4
 
+import httpx
 from fastapi import FastAPI
+from fastapi import Header
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import Settings
 from app.errors import AppError
+from app.groq import GroqClient
+from app.schemas import AiRequest, AiResponse
+from app.service import GenerateService
+from app.supabase import SupabaseGateway
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    generation_service: GenerateService | None = None,
+) -> FastAPI:
     settings = settings or Settings()
-    app = FastAPI()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        async with httpx.AsyncClient(
+            timeout=settings.ai_timeout_seconds
+        ) as http_client:
+            if generation_service is None:
+                app.state.generation_service = GenerateService(
+                    settings,
+                    SupabaseGateway(settings, http_client=http_client),
+                    GroqClient(settings, http_client=http_client),
+                )
+            yield
+
+    app = FastAPI(lifespan=lifespan)
+    if generation_service is not None:
+        app.state.generation_service = generation_service
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -56,6 +84,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 content={"status": "not_ready", "missing": missing},
             )
         return {"status": "ready"}
+
+    @app.post("/api/v1/ai/generate", response_model=AiResponse)
+    async def generate(
+        payload: AiRequest,
+        request: Request,
+        authorization: Annotated[str | None, Header()] = None,
+    ):
+        return await request.app.state.generation_service.generate(
+            payload,
+            authorization,
+            request.state.request_id,
+        )
 
     return app
 

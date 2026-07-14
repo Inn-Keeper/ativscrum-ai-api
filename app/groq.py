@@ -76,21 +76,31 @@ class GroqClient:
                 response = await self._post(body)
             except httpx.TransportError as exc:
                 if retries >= self.settings.ai_max_retries:
-                    raise self._unavailable() from exc
+                    raise self._unavailable(retries) from exc
                 await self._retry_delay(retries)
                 retries += 1
                 continue
 
             if response.status_code == 429:
-                raise AppError(429, "provider_limited", "The AI provider is rate limited.")
+                raise AppError(
+                    429,
+                    "provider_limited",
+                    "The AI provider is rate limited.",
+                    retries=retries,
+                )
             if response.status_code >= 500:
                 if retries >= self.settings.ai_max_retries:
-                    raise self._unavailable()
+                    raise self._unavailable(retries)
                 await self._retry_delay(retries)
                 retries += 1
                 continue
             if response.is_error:
-                raise AppError(502, "provider_error", "The AI provider rejected the request.")
+                raise AppError(
+                    502,
+                    "provider_error",
+                    "The AI provider rejected the request.",
+                    retries=retries,
+                )
 
             try:
                 payload = response.json()
@@ -103,11 +113,18 @@ class GroqClient:
                     completion_tokens=self._token_count(usage.get("completion_tokens")),
                     retries=retries,
                 )
-            except (KeyError, IndexError, TypeError, ValueError, ValidationError) as exc:
+            except (
+                KeyError,
+                IndexError,
+                TypeError,
+                ValueError,
+                ValidationError,
+            ) as exc:
                 raise AppError(
                     502,
                     "invalid_model_response",
                     "The AI provider returned an invalid response.",
+                    retries=retries,
                 ) from exc
 
     async def _post(self, body: dict) -> httpx.Response:
@@ -137,5 +154,10 @@ class GroqClient:
         return value if isinstance(value, int) and not isinstance(value, bool) else None
 
     @staticmethod
-    def _unavailable() -> AppError:
-        return AppError(503, "provider_unavailable", "The AI provider is unavailable.")
+    def _unavailable(retries: int) -> AppError:
+        return AppError(
+            503,
+            "provider_unavailable",
+            "The AI provider is unavailable.",
+            retries=retries,
+        )

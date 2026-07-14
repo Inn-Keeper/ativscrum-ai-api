@@ -184,6 +184,7 @@ async def test_generate_does_not_retry_rate_limit():
         await generate(httpx.MockTransport(handler))
 
     assert exc.value.code == "provider_limited"
+    assert exc.value.retries == 0
     assert attempts == 1
 
 
@@ -203,6 +204,7 @@ async def test_generate_maps_exhausted_server_failures_to_unavailable():
         await generate(httpx.MockTransport(handler), sleep=no_sleep)
 
     assert exc.value.code == "provider_unavailable"
+    assert exc.value.retries == 1
     assert attempts == 2
 
 
