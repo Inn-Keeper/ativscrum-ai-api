@@ -84,7 +84,10 @@ async def tenants():
                     "POST",
                     "/rest/v1/boards",
                     headers=service_headers,
-                    json={"org_id": str(org_id), "data": {"project": {"name": sentinel}}},
+                    json={
+                        "org_id": str(org_id),
+                        "data": {"project": {"name": sentinel}},
+                    },
                 )
 
             sessions = []
@@ -97,7 +100,9 @@ async def tenants():
                     json={"email": email, "password": password},
                 )
                 token = response.json()["access_token"]
-                sessions.append(Session(user_id=response.json()["user"]["id"], token=token))
+                sessions.append(
+                    Session(user_id=response.json()["user"]["id"], token=token)
+                )
 
             yield TenantPair(
                 gateway=SupabaseGateway(
@@ -116,9 +121,13 @@ async def tenants():
                         headers=service_headers,
                     )
                     if not response.is_success:
-                        cleanup_errors.append(f"organization {org_id}: {response.status_code}")
+                        cleanup_errors.append(
+                            f"organization {org_id}: {response.status_code}"
+                        )
                 except httpx.HTTPError as exc:
-                    cleanup_errors.append(f"organization {org_id}: {type(exc).__name__}")
+                    cleanup_errors.append(
+                        f"organization {org_id}: {type(exc).__name__}"
+                    )
             for user_id in user_ids:
                 try:
                     response = await client.delete(

@@ -98,7 +98,9 @@ def _task(source: dict) -> dict:
         "storyId": _string(source.get("backlogItemId")),
         "title": _string(source.get("title")),
         "assigneeId": (
-            _string(source.get("assigneeId")) if source.get("assigneeId") is not None else None
+            _string(source.get("assigneeId"))
+            if source.get("assigneeId") is not None
+            else None
         ),
         "status": _string(source.get("status")),
         "completedAt": (
@@ -112,7 +114,9 @@ def _task(source: dict) -> dict:
     return result
 
 
-def _tasks(board: dict, story_ids: set[str], member_id: str | None = None) -> list[dict]:
+def _tasks(
+    board: dict, story_ids: set[str], member_id: str | None = None
+) -> list[dict]:
     sources = sorted(
         (
             task
@@ -145,7 +149,11 @@ def _cards(board: dict, field: str, sprint_id: str, *, retro: bool) -> list[dict
 
 def _transitions(board: dict, task_ids: set[str]) -> list[dict]:
     sources = sorted(
-        (item for item in board.get("transitions", []) if item.get("taskId") in task_ids),
+        (
+            item
+            for item in board.get("transitions", [])
+            if item.get("taskId") in task_ids
+        ),
         key=lambda item: (
             str(item.get("at", "")),
             str(item.get("taskId", "")),
@@ -183,7 +191,12 @@ def _story_context(board: dict, request: StoryAssistantRequest) -> dict:
     source = None
     if request.item_id is not None:
         source = next(
-            (item for item in board.get("items", []) if item.get("id") == request.item_id), None
+            (
+                item
+                for item in board.get("items", [])
+                if item.get("id") == request.item_id
+            ),
+            None,
         )
         if source is None:
             raise _not_found()
@@ -227,7 +240,9 @@ def _standup_context(board: dict, request: StandupDraftRequest) -> dict:
     person_ids = {task["assigneeId"] for task in tasks if task["assigneeId"]}
     people = [
         {"id": _string(person.get("id")), "name": _string(person.get("name"))}
-        for person in sorted(board.get("people", []), key=lambda item: str(item.get("id", "")))
+        for person in sorted(
+            board.get("people", []), key=lambda item: str(item.get("id", ""))
+        )
         if person.get("id") in person_ids
     ]
     referenced_story_ids = {task["storyId"] for task in tasks}
@@ -248,7 +263,9 @@ def _metrics(board: dict) -> dict:
     return {
         key: value
         for key, value in sorted(source.items(), key=lambda item: str(item[0]))
-        if isinstance(key, str) and isinstance(value, (int, float)) and not isinstance(value, bool)
+        if isinstance(key, str)
+        and isinstance(value, (int, float))
+        and not isinstance(value, bool)
     }
 
 
@@ -266,7 +283,8 @@ def _coach_context(board: dict, request: ScrumCoachRequest) -> dict:
         "wipLimits": {
             status: limits[status]
             for status in ("todo", "inprogress", "test", "done")
-            if isinstance(limits.get(status), int) and not isinstance(limits.get(status), bool)
+            if isinstance(limits.get(status), int)
+            and not isinstance(limits.get(status), bool)
         },
         "metrics": _metrics(board),
     }
@@ -295,7 +313,10 @@ def _trim_to_size(context: dict, max_chars: int) -> dict:
                 task
                 for task in result.get("tasks", [])
                 if task.get("status") == "done"
-                and (task.get("completedAt") is not None or task.get("assigneeId") is not None)
+                and (
+                    task.get("completedAt") is not None
+                    or task.get("assigneeId") is not None
+                )
             ),
             None,
         )

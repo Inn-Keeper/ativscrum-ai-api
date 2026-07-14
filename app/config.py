@@ -2,9 +2,7 @@ from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-STRICT_GROQ_MODELS = frozenset(
-    {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}
-)
+STRICT_GROQ_MODELS = frozenset({"openai/gpt-oss-20b", "openai/gpt-oss-120b"})
 
 
 class Settings(BaseSettings):
@@ -33,4 +31,6 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def cors_origins(self) -> list[str]:
-        return [value.strip() for value in self.allowed_origins.split(",") if value.strip()]
+        return [
+            value.strip() for value in self.allowed_origins.split(",") if value.strip()
+        ]

@@ -132,24 +132,74 @@ def board() -> dict:
             },
         ],
         "transitions": [
-            {"taskId": "task-b", "from": "todo", "to": "inprogress", "at": "2026-07-06"},
-            {"taskId": "task-a", "from": "todo", "to": "inprogress", "at": "2026-07-02"},
-            {"taskId": "task-a", "from": "inprogress", "to": "done", "at": "2026-07-04"},
+            {
+                "taskId": "task-b",
+                "from": "todo",
+                "to": "inprogress",
+                "at": "2026-07-06",
+            },
+            {
+                "taskId": "task-a",
+                "from": "todo",
+                "to": "inprogress",
+                "at": "2026-07-02",
+            },
+            {
+                "taskId": "task-a",
+                "from": "inprogress",
+                "to": "done",
+                "at": "2026-07-04",
+            },
             {"taskId": "task-old", "from": "todo", "to": "done", "at": "2026-06-02"},
         ],
         "reviewCards": [
-            {"id": "review-low", "sprintId": "s-current", "text": "Minor note", "votes": 0},
-            {"id": "review-top", "sprintId": "s-current", "text": "Strong result", "votes": 5},
-            {"id": "review-old", "sprintId": "s-old", "text": "SECRET_OLD_REVIEW", "votes": 9},
+            {
+                "id": "review-low",
+                "sprintId": "s-current",
+                "text": "Minor note",
+                "votes": 0,
+            },
+            {
+                "id": "review-top",
+                "sprintId": "s-current",
+                "text": "Strong result",
+                "votes": 5,
+            },
+            {
+                "id": "review-old",
+                "sprintId": "s-old",
+                "text": "SECRET_OLD_REVIEW",
+                "votes": 9,
+            },
         ],
         "retroCards": [
-            {"id": "retro-low", "sprintId": "s-current", "column": "start", "text": "Pair more", "votes": 0},
-            {"id": "retro-top", "sprintId": "s-current", "column": "continue", "text": "Small PRs", "votes": 4},
-            {"id": "retro-old", "sprintId": "s-old", "column": "stop", "text": "SECRET_OLD_RETRO", "votes": 9},
+            {
+                "id": "retro-low",
+                "sprintId": "s-current",
+                "column": "start",
+                "text": "Pair more",
+                "votes": 0,
+            },
+            {
+                "id": "retro-top",
+                "sprintId": "s-current",
+                "column": "continue",
+                "text": "Small PRs",
+                "votes": 4,
+            },
+            {
+                "id": "retro-old",
+                "sprintId": "s-old",
+                "column": "stop",
+                "text": "SECRET_OLD_RETRO",
+                "votes": 9,
+            },
         ],
         "comments": [{"id": "comment-1", "text": "SECRET_COMMENT"}],
         "invites": [{"id": "invite-1", "email": "invite-secret@example.com"}],
-        "members": [{"user_id": "SECRET_MEMBER_AUTH", "email": "member-secret@example.com"}],
+        "members": [
+            {"user_id": "SECRET_MEMBER_AUTH", "email": "member-secret@example.com"}
+        ],
         "wipLimits": {"inprogress": 3, "test": 2},
         "metrics": {"blocked": 1, "cycleTimeDays": 2.5},
     }
@@ -180,7 +230,9 @@ def assert_private_fields_absent(context: dict) -> None:
 def test_summary_selects_only_current_sprint_records(board):
     context = build_context(
         board,
-        SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"),
+        SprintSummaryRequest(
+            kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"
+        ),
         max_chars=10_000,
     )
 
@@ -188,7 +240,10 @@ def test_summary_selects_only_current_sprint_records(board):
     assert context["sprint"]["id"] == "s-current"
     assert [story["id"] for story in context["stories"]] == ["story-a", "story-b"]
     assert [task["id"] for task in context["tasks"]] == ["task-a", "task-b"]
-    assert [card["id"] for card in context["reviewCards"]] == ["review-low", "review-top"]
+    assert [card["id"] for card in context["reviewCards"]] == [
+        "review-low",
+        "review-top",
+    ]
     assert [card["id"] for card in context["retroCards"]] == ["retro-low", "retro-top"]
     assert_private_fields_absent(context)
 
@@ -220,7 +275,9 @@ def test_unsaved_story_uses_only_the_draft(board):
         StoryAssistantRequest(
             kind="story_assistant",
             org_id=ORG_ID,
-            draft=StoryDraft(title="New story", description="New description", estimate_days=5),
+            draft=StoryDraft(
+                title="New story", description="New description", estimate_days=5
+            ),
         ),
         max_chars=10_000,
     )
@@ -257,7 +314,10 @@ def test_standup_member_filter_limits_tasks_people_and_transitions(board):
     context = build_context(
         board,
         StandupDraftRequest(
-            kind="standup_draft", org_id=ORG_ID, sprint_id="s-current", member_id="person-b"
+            kind="standup_draft",
+            org_id=ORG_ID,
+            sprint_id="s-current",
+            member_id="person-b",
         ),
         max_chars=10_000,
     )
@@ -303,9 +363,19 @@ def test_unknown_requested_resource_is_not_found(board, ai_request):
 
 def test_context_is_deterministic_for_reordered_input(board):
     shuffled = deepcopy(board)
-    for field in ("sprints", "items", "tasks", "people", "transitions", "reviewCards", "retroCards"):
+    for field in (
+        "sprints",
+        "items",
+        "tasks",
+        "people",
+        "transitions",
+        "reviewCards",
+        "retroCards",
+    ):
         shuffled[field].reverse()
-    request = ScrumCoachRequest(kind="scrum_coach", org_id=ORG_ID, sprint_id="s-current")
+    request = ScrumCoachRequest(
+        kind="scrum_coach", org_id=ORG_ID, sprint_id="s-current"
+    )
 
     assert serialized(build_context(board, request, 10_000)) == serialized(
         build_context(shuffled, request, 10_000)
@@ -322,7 +392,9 @@ def test_size_limit_trims_oldest_transitions_before_current_blockers(board):
                 "at": f"2026-01-{index + 1:02d}",
             }
         )
-    request = StandupDraftRequest(kind="standup_draft", org_id=ORG_ID, sprint_id="s-current")
+    request = StandupDraftRequest(
+        kind="standup_draft", org_id=ORG_ID, sprint_id="s-current"
+    )
     full = build_context(board, request, max_chars=20_000)
     limit = len(serialized(full)) - 250
 
@@ -331,13 +403,15 @@ def test_size_limit_trims_oldest_transitions_before_current_blockers(board):
     assert len(serialized(context)) <= limit
     assert len(context["transitions"]) < len(full["transitions"])
     assert context["transitions"][-1]["at"] == "2026-07-06"
-    assert next(task for task in context["tasks"] if task["id"] == "task-b")["blocked"] == (
-        "Waiting for access"
-    )
+    assert next(task for task in context["tasks"] if task["id"] == "task-b")[
+        "blocked"
+    ] == ("Waiting for access")
 
 
 def test_summary_trims_lowest_voted_cards_after_transitions(board):
-    request = SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current")
+    request = SprintSummaryRequest(
+        kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"
+    )
     full = build_context(board, request, max_chars=10_000)
     limit = len(serialized(full)) - len(serialized(full["reviewCards"][0]))
 
@@ -413,7 +487,9 @@ def test_large_required_collections_are_not_silently_pre_capped(board):
 
     context = build_context(
         board,
-        SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"),
+        SprintSummaryRequest(
+            kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"
+        ),
         max_chars=1_000_000,
     )
 
@@ -429,12 +505,16 @@ def test_large_required_collections_are_not_silently_pre_capped(board):
     board_without_cards["retroCards"] = []
     protected = build_context(
         board_without_cards,
-        SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"),
+        SprintSummaryRequest(
+            kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"
+        ),
         max_chars=1_000_000,
     )
     trimmed = build_context(
         board,
-        SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"),
+        SprintSummaryRequest(
+            kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"
+        ),
         max_chars=len(serialized(protected)),
     )
     assert len(trimmed["stories"]) == 105
@@ -453,7 +533,9 @@ def test_requested_story_text_is_lossless_and_fails_closed_when_too_large(board)
     board["items"][2]["acceptance"] = [
         {"id": "ac-lossless", "text": long_acceptance, "done": False}
     ]
-    request = StoryAssistantRequest(kind="story_assistant", org_id=ORG_ID, item_id="story-a")
+    request = StoryAssistantRequest(
+        kind="story_assistant", org_id=ORG_ID, item_id="story-a"
+    )
 
     context = build_context(board, request, max_chars=20_000)
 
@@ -469,7 +551,10 @@ def test_member_standup_keeps_only_stories_referenced_by_filtered_tasks(board):
     context = build_context(
         board,
         StandupDraftRequest(
-            kind="standup_draft", org_id=ORG_ID, sprint_id="s-current", member_id="person-b"
+            kind="standup_draft",
+            org_id=ORG_ID,
+            sprint_id="s-current",
+            member_id="person-b",
         ),
         max_chars=10_000,
     )
@@ -501,9 +586,10 @@ def test_blockers_and_metric_evidence_ids_are_lossless(board):
         max_chars=20_000,
     )
 
-    assert next(task for task in context["tasks"] if task["id"] == "task-b")[
-        "blocked"
-    ] == long_blocker
+    assert (
+        next(task for task in context["tasks"] if task["id"] == "task-b")["blocked"]
+        == long_blocker
+    )
     assert context["metrics"] == {long_metric_id: 7}
 
 
@@ -516,7 +602,9 @@ def test_all_allowlisted_summary_values_are_lossless(board):
     task_title = "task-" + "t" * 300
     card_text = "card-" + "c" * 600
     board["project"]["name"] = project_name
-    board["project"]["dod"] = [f"criterion-{index}" for index in range(35)] + [dod_entry]
+    board["project"]["dod"] = [f"criterion-{index}" for index in range(35)] + [
+        dod_entry
+    ]
     board["sprints"][1]["name"] = sprint_name
     board["sprints"][1]["goal"] = sprint_goal
     board["items"][2]["title"] = story_title
@@ -525,7 +613,9 @@ def test_all_allowlisted_summary_values_are_lossless(board):
 
     context = build_context(
         board,
-        SprintSummaryRequest(kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"),
+        SprintSummaryRequest(
+            kind="sprint_summary", org_id=ORG_ID, sprint_id="s-current"
+        ),
         max_chars=50_000,
     )
 
@@ -534,15 +624,20 @@ def test_all_allowlisted_summary_values_are_lossless(board):
     assert context["project"]["dod"][-1] == dod_entry
     assert context["sprint"]["name"] == sprint_name
     assert context["sprint"]["goal"] == sprint_goal
-    assert next(story for story in context["stories"] if story["id"] == "story-a")[
-        "title"
-    ] == story_title
-    assert next(task for task in context["tasks"] if task["id"] == "task-a")[
-        "title"
-    ] == task_title
-    assert next(card for card in context["reviewCards"] if card["id"] == "review-low")[
-        "text"
-    ] == card_text
+    assert (
+        next(story for story in context["stories"] if story["id"] == "story-a")["title"]
+        == story_title
+    )
+    assert (
+        next(task for task in context["tasks"] if task["id"] == "task-a")["title"]
+        == task_title
+    )
+    assert (
+        next(card for card in context["reviewCards"] if card["id"] == "review-low")[
+            "text"
+        ]
+        == card_text
+    )
 
 
 def test_all_allowlisted_standup_values_are_lossless(board):
