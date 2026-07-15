@@ -86,6 +86,8 @@ class GenerateService:
             }
             if payload.kind == "scrum_coach":
                 self._validate_evidence(result.value, context)
+            elif payload.kind == "standup_draft":
+                self._validate_standup(result.value, context)
             response_type = _RESPONSES[payload.kind]
             response = response_type(
                 kind=payload.kind,
@@ -144,6 +146,20 @@ class GenerateService:
             evidence.id not in valid[evidence.kind]
             for observation in suggestion.observations
             for evidence in observation.evidence
+        ):
+            raise AppError(
+                502,
+                "invalid_model_response",
+                "The AI provider returned an invalid response.",
+            )
+
+    @staticmethod
+    def _validate_standup(suggestion: StandupSuggestion, context: dict) -> None:
+        people = {person["id"]: person["name"] for person in context.get("people", [])}
+        member_ids = [member.member_id for member in suggestion.members]
+        if len(member_ids) != len(set(member_ids)) or any(
+            people.get(member.member_id) != member.member_name
+            for member in suggestion.members
         ):
             raise AppError(
                 502,

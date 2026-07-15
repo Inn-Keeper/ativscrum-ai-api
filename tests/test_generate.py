@@ -428,3 +428,118 @@ async def test_coach_rejects_evidence_absent_from_minimized_context():
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "invalid_model_response"
     assert events == ["validate_session", "read_board", "consume_quota", "groq"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "members",
+    [
+        [
+            {
+                "member_id": "invented-person",
+                "member_name": "Invented Person",
+                "completed": [],
+                "current": [],
+                "blockers": [],
+            }
+        ],
+        [
+            {
+                "member_id": "person-1",
+                "member_name": "Wrong Name",
+                "completed": [],
+                "current": [],
+                "blockers": [],
+            }
+        ],
+        [
+            {
+                "member_id": "person-1",
+                "member_name": "Person",
+                "completed": [],
+                "current": [],
+                "blockers": [],
+            },
+            {
+                "member_id": "person-1",
+                "member_name": "Person",
+                "completed": [],
+                "current": [],
+                "blockers": [],
+            },
+        ],
+    ],
+    ids=["invented-member", "mismatched-name", "duplicate-member"],
+)
+async def test_standup_rejects_members_not_matching_minimized_context(members):
+    events = []
+    bad_groq = FakeGroq(events)
+
+    async def generate(*args, **kwargs):
+        events.append("groq")
+        return GroqResult(
+            value=StandupSuggestion(members=members),
+            prompt_tokens=2,
+            completion_tokens=3,
+            retries=0,
+        )
+
+    bad_groq.generate = generate
+    generation_service = GenerateService(Settings(), FakeGateway(events), bad_groq)
+
+    response = await post(generation_service, REQUESTS["standup_draft"])
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "invalid_model_response"
+    assert events == ["validate_session", "read_board", "consume_quota", "groq"]
+
+
+@pytest.mark.asyncio
+async def test_member_standup_rejects_other_real_member_outside_requested_scope():
+    events = []
+    board_data = board()
+    board_data["people"].append({"id": "person-2", "name": "Other Person"})
+    board_data["tasks"].append(
+        {
+            "id": "task-2",
+            "backlogItemId": "story-1",
+            "title": "Other task",
+            "assigneeId": "person-2",
+            "status": "todo",
+            "completedAt": None,
+        }
+    )
+    bad_groq = FakeGroq(events)
+
+    async def generate(*args, **kwargs):
+        events.append("groq")
+        return GroqResult(
+            value=StandupSuggestion(
+                members=[
+                    {
+                        "member_id": "person-2",
+                        "member_name": "Other Person",
+                        "completed": [],
+                        "current": ["Other task"],
+                        "blockers": [],
+                    }
+                ]
+            ),
+            prompt_tokens=2,
+            completion_tokens=3,
+            retries=0,
+        )
+
+    bad_groq.generate = generate
+    generation_service = GenerateService(
+        Settings(), FakeGateway(events, board_data=board_data), bad_groq
+    )
+
+    response = await post(
+        generation_service,
+        {**REQUESTS["standup_draft"], "member_id": "person-1"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "invalid_model_response"
+    assert events == ["validate_session", "read_board", "consume_quota", "groq"]
