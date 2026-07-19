@@ -16,14 +16,14 @@ T = TypeVar("T", bound=BaseModel)
 
 
 @dataclass(frozen=True)
-class GroqResult(Generic[T]):
+class GeminiResult(Generic[T]):
     value: T
     prompt_tokens: int | None
     completion_tokens: int | None
     retries: int
 
 
-class GroqClient:
+class GeminiClient:
     def __init__(
         self,
         settings: Settings,
@@ -43,7 +43,7 @@ class GroqClient:
         system_prompt: str,
         context: dict,
         output_type: type[T],
-    ) -> GroqResult[T]:
+    ) -> GeminiResult[T]:
         schema = output_type.model_json_schema()
         body = {
             "model": model,
@@ -107,7 +107,7 @@ class GroqClient:
                 content = payload["choices"][0]["message"]["content"]
                 value = output_type.model_validate_json(content)
                 usage = payload.get("usage") or {}
-                return GroqResult(
+                return GeminiResult(
                     value=value,
                     prompt_tokens=self._token_count(usage.get("prompt_tokens")),
                     completion_tokens=self._token_count(usage.get("completion_tokens")),
@@ -128,8 +128,8 @@ class GroqClient:
                 ) from exc
 
     async def _post(self, body: dict) -> httpx.Response:
-        headers = {"Authorization": f"Bearer {self.settings.groq_api_key}"}
-        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {self.settings.gemini_api_key}"}
+        url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         if self.http_client is not None:
             return await self.http_client.post(
                 url,

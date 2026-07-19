@@ -2,7 +2,7 @@ from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-STRICT_GROQ_MODELS = frozenset({"openai/gpt-oss-20b", "openai/gpt-oss-120b"})
+STRICT_GEMINI_MODELS = frozenset({"gemini-3.1-flash-lite", "gemini-3.5-flash"})
 
 
 class Settings(BaseSettings):
@@ -10,9 +10,9 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:5173"
     supabase_url: str = ""
     supabase_anon_key: str = ""
-    groq_api_key: str = ""
-    ai_model_fast: str = "openai/gpt-oss-20b"
-    ai_model_quality: str = "openai/gpt-oss-120b"
+    gemini_api_key: str = ""
+    ai_model_fast: str = "gemini-3.1-flash-lite"
+    ai_model_quality: str = "gemini-3.5-flash"
     ai_timeout_seconds: float = 20
     ai_max_retries: int = 1
     ai_context_max_chars: int = 24_000
@@ -22,10 +22,10 @@ class Settings(BaseSettings):
 
     @field_validator("ai_model_fast", "ai_model_quality")
     @classmethod
-    def require_strict_groq_model(cls, value: str) -> str:
-        if value not in STRICT_GROQ_MODELS:
-            supported = ", ".join(sorted(STRICT_GROQ_MODELS))
-            raise ValueError(f"model must support Groq strict outputs: {supported}")
+    def require_strict_gemini_model(cls, value: str) -> str:
+        if value not in STRICT_GEMINI_MODELS:
+            supported = ", ".join(sorted(STRICT_GEMINI_MODELS))
+            raise ValueError(f"model must support Gemini strict outputs: {supported}")
         return value
 
     @computed_field

@@ -29,14 +29,14 @@ def test_coaching_requires_evidence_for_each_observation():
 
 def test_model_selection_uses_fast_and_quality_settings():
     configured = Settings(
-        ai_model_fast="openai/gpt-oss-120b",
-        ai_model_quality="openai/gpt-oss-20b",
+        ai_model_fast="gemini-3.5-flash",
+        ai_model_quality="gemini-3.1-flash-lite",
     )
 
-    assert model_for("story_assistant", configured) == "openai/gpt-oss-120b"
-    assert model_for("standup_draft", configured) == "openai/gpt-oss-120b"
-    assert model_for("sprint_summary", configured) == "openai/gpt-oss-20b"
-    assert model_for("scrum_coach", configured) == "openai/gpt-oss-20b"
+    assert model_for("story_assistant", configured) == "gemini-3.5-flash"
+    assert model_for("standup_draft", configured) == "gemini-3.5-flash"
+    assert model_for("sprint_summary", configured) == "gemini-3.1-flash-lite"
+    assert model_for("scrum_coach", configured) == "gemini-3.1-flash-lite"
 
 
 @pytest.mark.parametrize("field", ["ai_model_fast", "ai_model_quality"])

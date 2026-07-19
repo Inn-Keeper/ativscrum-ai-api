@@ -3,7 +3,7 @@
 Stateless FastAPI service for ativScrum's optional, cloud-team-only AI features.
 It validates the caller's Supabase access token, reads only that caller's
 organization through Row Level Security, consumes an atomic daily quota, sends
-a minimized context to Groq, and returns a strictly validated suggestion.
+a minimized context to Gemini, and returns a strictly validated suggestion.
 
 The service does not persist prompts, board context, or model responses. AI
 output remains a suggestion until the frontend user explicitly accepts it.
@@ -12,7 +12,7 @@ output remains a suggestion until the frontend user explicitly accepts it.
 
 - Python 3.11
 - a Supabase project with `ativscrum/supabase/schema.sql` applied
-- a Groq API key with Zero Data Retention enabled before public use
+- a Google AI Studio (Gemini) API key
 
 ## Local setup
 
@@ -35,7 +35,7 @@ Do not use `*`. Do not put a Supabase service-role key in this service. Runtime
 Supabase calls deliberately use only the public anon key plus the caller's
 bearer token, so database RLS remains the tenant boundary.
 
-Check the process without invoking Supabase or Groq:
+Check the process without invoking Supabase or Gemini:
 
 ```bash
 curl http://localhost:8000/health
@@ -66,9 +66,9 @@ curl --request POST http://localhost:8000/api/v1/ai/generate \
 | `ALLOWED_ORIGINS` | yes in deployment | Comma-separated exact frontend origins allowed by CORS. |
 | `SUPABASE_URL` | yes | Supabase project URL. |
 | `SUPABASE_ANON_KEY` | yes | Public anon key; authorization still comes from the caller token and RLS. |
-| `GROQ_API_KEY` | yes | Server-only Groq credential. |
-| `AI_MODEL_FAST` | no | Strict-output fast model; defaults to `openai/gpt-oss-20b`. |
-| `AI_MODEL_QUALITY` | no | Strict-output quality model; defaults to `openai/gpt-oss-120b`. |
+| `GEMINI_API_KEY` | yes | Server-only Gemini credential. |
+| `AI_MODEL_FAST` | no | Strict-output fast model; defaults to `gemini-3.1-flash-lite`. |
+| `AI_MODEL_QUALITY` | no | Strict-output quality model; defaults to `gemini-3.5-flash`. |
 | `AI_TIMEOUT_SECONDS` | no | Provider timeout; defaults to `20`. |
 | `AI_MAX_RETRIES` | no | Retry count for transient provider failures; defaults to `1`. |
 | `AI_CONTEXT_MAX_CHARS` | no | Hard cap for serialized minimized context; defaults to `24000`. |
@@ -114,8 +114,9 @@ Publish this repository first, then follow Koyeb's
 4. Add every runtime variable from the table above as a Koyeb environment
    variable or secret. Set `ALLOWED_ORIGINS` to the exact production Vercel
    origin (and an exact preview origin only if previews genuinely need AI).
-5. In [Groq Data Controls](https://console.groq.com/docs/your-data), enable Zero
-   Data Retention before public traffic. ZDR does not remove Groq usage metadata.
+5. Note that the Gemini API free tier may use submitted content to improve
+   Google products; use a paid tier before sending real customer data. See
+   [Gemini API terms](https://ai.google.dev/gemini-api/terms).
 6. Deploy, then verify `/health` and `/ready` before configuring the frontend.
 
 Koyeb's Free instance scales to zero after one hour without traffic, so the

@@ -51,10 +51,10 @@ def _bearer_token(credentials: str | None) -> str:
 
 
 class GenerateService:
-    def __init__(self, settings: Settings, gateway: Any, groq: Any) -> None:
+    def __init__(self, settings: Settings, gateway: Any, gemini: Any) -> None:
         self.settings = settings
         self.gateway = gateway
-        self.groq = groq
+        self.gemini = gemini
 
     async def generate(
         self,
@@ -73,7 +73,7 @@ class GenerateService:
             board = await self.gateway.read_board(session, payload.org_id)
             context = build_context(board, payload, self.settings.ai_context_max_chars)
             await self.gateway.consume_quota(session, payload.org_id)
-            result = await self.groq.generate(
+            result = await self.gemini.generate(
                 model,
                 prompt_for(payload.kind),
                 context,

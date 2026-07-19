@@ -12,7 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import Settings
 from app.errors import AppError
-from app.groq import GroqClient
+from app.gemini import GeminiClient
 from app.schemas import AiRequest, AiResponse
 from app.service import GenerateService
 from app.supabase import SupabaseGateway
@@ -37,7 +37,7 @@ def create_app(
                 app.state.generation_service = GenerateService(
                     settings,
                     SupabaseGateway(settings, http_client=http_client),
-                    GroqClient(settings, http_client=http_client),
+                    GeminiClient(settings, http_client=http_client),
                 )
             yield
 
@@ -79,7 +79,7 @@ def create_app(
         required_settings = {
             "SUPABASE_URL": settings.supabase_url,
             "SUPABASE_ANON_KEY": settings.supabase_anon_key,
-            "GROQ_API_KEY": settings.groq_api_key,
+            "GEMINI_API_KEY": settings.gemini_api_key,
         }
         missing = [name for name, value in required_settings.items() if not value]
         if missing:

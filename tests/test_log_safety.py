@@ -5,7 +5,7 @@ import pytest
 
 from app.config import Settings
 from app.errors import AppError
-from app.groq import GroqResult
+from app.gemini import GeminiResult
 from app.schemas import StorySuggestion
 from app.service import GenerateService
 from app.supabase import Session
@@ -37,9 +37,9 @@ class SecretGateway:
         return {"allowed": True}
 
 
-class SecretGroq:
+class SecretGemini:
     async def generate(self, model, system_prompt, context, output_type):
-        return GroqResult(
+        return GeminiResult(
             value=StorySuggestion(
                 description="SECRET_BOARD_TEXT",
                 acceptance=["SECRET_BOARD_TEXT"],
@@ -53,7 +53,7 @@ class SecretGroq:
         )
 
 
-class ProviderFailureGroq:
+class ProviderFailureGemini:
     async def generate(self, model, system_prompt, context, output_type):
         assert "SECRET_BOARD_TEXT" in str(context)
         raise AppError(
@@ -74,7 +74,7 @@ async def test_completion_log_contains_only_safe_structured_metadata(caplog):
     generation_service = GenerateService(
         Settings(),
         SecretGateway(),
-        SecretGroq(),
+        SecretGemini(),
     )
 
     with caplog.at_level(logging.INFO, logger="app.ai"):
@@ -93,7 +93,7 @@ async def test_completion_log_contains_only_safe_structured_metadata(caplog):
     assert ORG_ID not in text
     assert response.json()["request_id"] in text
     assert "kind=story_assistant" in text
-    assert "model=openai/gpt-oss-20b" in text
+    assert "model=gemini-3.1-flash-lite" in text
     assert "outcome=success" in text
     assert "latency_ms=" in text
     assert "retries=1" in text
@@ -108,7 +108,7 @@ async def test_failure_log_is_content_free_and_has_safe_metadata(caplog):
     generation_service = GenerateService(
         Settings(),
         RejectedGateway(),
-        SecretGroq(),
+        SecretGemini(),
     )
 
     with caplog.at_level(logging.INFO, logger="app.ai"):
@@ -123,7 +123,7 @@ async def test_failure_log_is_content_free_and_has_safe_metadata(caplog):
     assert "secret-token" not in text
     assert ORG_ID not in text
     assert "kind=story_assistant" in text
-    assert "model=openai/gpt-oss-20b" in text
+    assert "model=gemini-3.1-flash-lite" in text
     assert "outcome=authentication_required" in text
     assert "latency_ms=" in text
     assert "retries=-" in text
@@ -138,7 +138,7 @@ async def test_provider_failure_after_board_load_does_not_log_content_or_identif
     generation_service = GenerateService(
         Settings(),
         SecretGateway(),
-        ProviderFailureGroq(),
+        ProviderFailureGemini(),
     )
 
     with caplog.at_level(logging.INFO, logger="app.ai"):

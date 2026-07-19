@@ -5,7 +5,7 @@ import pytest
 
 from app.config import Settings
 from app.errors import AppError
-from app.groq import GroqResult
+from app.gemini import GeminiResult
 from app.main import create_app
 from app.schemas import (
     CoachSuggestion,
@@ -150,16 +150,16 @@ class FakeGateway:
         return {"allowed": True}
 
 
-class FakeGroq:
+class FakeGemini:
     def __init__(self, events, *, failure=False):
         self.events = events
         self.failure = failure
 
     async def generate(self, model, system_prompt, context, output_type):
-        self.events.append("groq")
+        self.events.append("gemini")
         if self.failure:
             raise AppError(503, "provider_unavailable", "Provider unavailable.")
-        return GroqResult(
+        return GeminiResult(
             value=SUGGESTIONS[context["kind"]],
             prompt_tokens=20,
             completion_tokens=10,
@@ -167,16 +167,16 @@ class FakeGroq:
         )
 
 
-def service(events, *, gateway_failure=None, groq_failure=False, board_data=None):
+def service(events, *, gateway_failure=None, gemini_failure=False, board_data=None):
     configured = Settings(
         supabase_url="https://test.supabase.co",
         supabase_anon_key="anon",
-        groq_api_key="secret",
+        gemini_api_key="secret",
     )
     return GenerateService(
         configured,
         FakeGateway(events, failure=gateway_failure, board_data=board_data),
-        FakeGroq(events, failure=groq_failure),
+        FakeGemini(events, failure=gemini_failure),
     )
 
 
@@ -204,7 +204,7 @@ async def test_generation_calls_security_boundaries_in_exact_order():
     response = await post(service(events), REQUESTS["story_assistant"])
 
     assert response.status_code == 200
-    assert events == ["validate_session", "read_board", "consume_quota", "groq"]
+    assert events == ["validate_session", "read_board", "consume_quota", "gemini"]
 
 
 @pytest.mark.asyncio
@@ -215,12 +215,12 @@ async def test_lifespan_shares_and_closes_one_http_client(monkeypatch):
         def __init__(self, settings, *, http_client):
             clients.append(http_client)
 
-    class CapturingGroq:
+    class CapturingGemini:
         def __init__(self, settings, *, http_client):
             clients.append(http_client)
 
     monkeypatch.setattr("app.main.SupabaseGateway", CapturingSupabase)
-    monkeypatch.setattr("app.main.GroqClient", CapturingGroq)
+    monkeypatch.setattr("app.main.GeminiClient", CapturingGemini)
 
     app = create_app(Settings())
     async with app.router.lifespan_context(app):
@@ -258,7 +258,7 @@ async def test_failures_before_context_validation_never_consume_quota(
 
     assert response.status_code == expected_status
     assert "consume_quota" not in events
-    assert "groq" not in events
+    assert "gemini" not in events
 
 
 @pytest.mark.asyncio
@@ -287,7 +287,7 @@ async def test_oversized_context_never_consumes_quota():
     events = []
     configured = Settings(ai_context_max_chars=50)
     generation_service = GenerateService(
-        configured, FakeGateway(events), FakeGroq(events)
+        configured, FakeGateway(events), FakeGemini(events)
     )
 
     response = await post(generation_service, REQUESTS["story_assistant"])
@@ -301,11 +301,11 @@ async def test_provider_failure_occurs_after_exactly_one_quota_reservation():
     events = []
 
     response = await post(
-        service(events, groq_failure=True), REQUESTS["story_assistant"]
+        service(events, gemini_failure=True), REQUESTS["story_assistant"]
     )
 
     assert response.status_code == 503
-    assert events == ["validate_session", "read_board", "consume_quota", "groq"]
+    assert events == ["validate_session", "read_board", "consume_quota", "gemini"]
     assert events.count("consume_quota") == 1
 
 
@@ -320,7 +320,7 @@ async def test_all_generation_kinds_return_the_typed_contract(kind):
     payload = response.json()
     assert payload["kind"] == kind
     assert UUID(payload["request_id"])
-    assert payload["model"] in {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}
+    assert payload["model"] in {"gemini-3.1-flash-lite", "gemini-3.5-flash"}
     assert payload["suggestion"] == SUGGESTIONS[kind].model_dump(mode="json")
 
 
@@ -377,7 +377,7 @@ def test_openapi_exposes_only_discriminated_request_union_and_bearer_security():
 @pytest.mark.asyncio
 async def test_coach_rejects_evidence_absent_from_minimized_context():
     events = []
-    bad_groq = FakeGroq(events)
+    bad_gemini = FakeGemini(events)
     board_data = board()
     board_data["items"].append(
         {
@@ -401,8 +401,8 @@ async def test_coach_rejects_evidence_absent_from_minimized_context():
     )
 
     async def generate(*args, **kwargs):
-        events.append("groq")
-        return GroqResult(
+        events.append("gemini")
+        return GeminiResult(
             value=CoachSuggestion(
                 observations=[
                     {
@@ -418,16 +418,16 @@ async def test_coach_rejects_evidence_absent_from_minimized_context():
             retries=0,
         )
 
-    bad_groq.generate = generate
+    bad_gemini.generate = generate
     generation_service = GenerateService(
-        Settings(), FakeGateway(events, board_data=board_data), bad_groq
+        Settings(), FakeGateway(events, board_data=board_data), bad_gemini
     )
 
     response = await post(generation_service, REQUESTS["scrum_coach"])
 
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "invalid_model_response"
-    assert events == ["validate_session", "read_board", "consume_quota", "groq"]
+    assert events == ["validate_session", "read_board", "consume_quota", "gemini"]
 
 
 @pytest.mark.asyncio
@@ -473,25 +473,25 @@ async def test_coach_rejects_evidence_absent_from_minimized_context():
 )
 async def test_standup_rejects_members_not_matching_minimized_context(members):
     events = []
-    bad_groq = FakeGroq(events)
+    bad_gemini = FakeGemini(events)
 
     async def generate(*args, **kwargs):
-        events.append("groq")
-        return GroqResult(
+        events.append("gemini")
+        return GeminiResult(
             value=StandupSuggestion(members=members),
             prompt_tokens=2,
             completion_tokens=3,
             retries=0,
         )
 
-    bad_groq.generate = generate
-    generation_service = GenerateService(Settings(), FakeGateway(events), bad_groq)
+    bad_gemini.generate = generate
+    generation_service = GenerateService(Settings(), FakeGateway(events), bad_gemini)
 
     response = await post(generation_service, REQUESTS["standup_draft"])
 
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "invalid_model_response"
-    assert events == ["validate_session", "read_board", "consume_quota", "groq"]
+    assert events == ["validate_session", "read_board", "consume_quota", "gemini"]
 
 
 @pytest.mark.asyncio
@@ -509,11 +509,11 @@ async def test_member_standup_rejects_other_real_member_outside_requested_scope(
             "completedAt": None,
         }
     )
-    bad_groq = FakeGroq(events)
+    bad_gemini = FakeGemini(events)
 
     async def generate(*args, **kwargs):
-        events.append("groq")
-        return GroqResult(
+        events.append("gemini")
+        return GeminiResult(
             value=StandupSuggestion(
                 members=[
                     {
@@ -530,9 +530,9 @@ async def test_member_standup_rejects_other_real_member_outside_requested_scope(
             retries=0,
         )
 
-    bad_groq.generate = generate
+    bad_gemini.generate = generate
     generation_service = GenerateService(
-        Settings(), FakeGateway(events, board_data=board_data), bad_groq
+        Settings(), FakeGateway(events, board_data=board_data), bad_gemini
     )
 
     response = await post(
@@ -542,4 +542,4 @@ async def test_member_standup_rejects_other_real_member_outside_requested_scope(
 
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "invalid_model_response"
-    assert events == ["validate_session", "read_board", "consume_quota", "groq"]
+    assert events == ["validate_session", "read_board", "consume_quota", "gemini"]
